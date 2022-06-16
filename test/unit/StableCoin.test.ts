@@ -12,11 +12,11 @@ describe("Djed Tests", () => {
   let ico: Contract;
   let wbtc: Contract;
   let feed: Contract;
+  let dao: Contract;
   let user: SignerWithAddress;
   let user2: SignerWithAddress;
   let user3: SignerWithAddress;
   const maxNum = ethers.constants.MaxUint256;
-
 
   before(async () => {
     await deployments.fixture(["all"]);
@@ -28,6 +28,7 @@ describe("Djed Tests", () => {
     wbtc = await ethers.getContract("MockWBTC");
     feed = await ethers.getContract("AggregatorV3Mock");
     cont = await ethers.getContract("Controller");
+    dao = await ethers.getContract("DaoMock");
 
     const mintWbtc_tx1 = await wbtc.mint(user.address, parse("100000"));
     await mintWbtc_tx1.wait();

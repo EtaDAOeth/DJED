@@ -2,6 +2,7 @@
 pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -19,7 +20,7 @@ interface IMint {
 /// @notice Algorithmic overcollateralized stable coin
 /// @custom:experimental This is an experimental contract DO NOT USE IN PRODUCTION
 
-contract Controller is ReentrancyGuard {
+contract Controller is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     event DjedBough(address indexed _address, uint indexed _djedAmount);
@@ -27,13 +28,16 @@ contract Controller is ReentrancyGuard {
     event ShenBought(address indexed _address, uint indexed _shenAmount);
     event ShenSold(address indexed _address, uint indexed _shenAmount);
 
+    address public etaDAO = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
+
     AggregatorV3Interface public immutable feed;
     IERC20 public immutable djed;
     IERC20 public immutable shen;
     IERC20 public immutable wbtc;
-    uint public PRICE = 1e18;
+    uint public constant PRICE = 1e18;
     uint public FEE = 5e15;
     uint public lastPrice = PRICE;
+    uint public daoFee = 2e18;
 
     uint public rMin = 3e18;
     uint public rMax = 7e18;
@@ -57,13 +61,15 @@ contract Controller is ReentrancyGuard {
         uint priceWithFee = djedPrice() + FEE;
         uint amountToSend = (priceWithFee * _djedAmount) / 1e18;
         uint amountInWbtc = (amountToSend * 1e18) / price;
+        uint etaFee = (daoFee * 1e18) / price;
         require(
             wbtc.balanceOf(msg.sender) >= amountInWbtc,
             "CONTROLLER: Not Enough WBTC"
         );
-        wbtc.safeTransferFrom(msg.sender, address(this), amountInWbtc);
+        wbtc.safeTransferFrom(msg.sender, address(this), amountInWbtc + etaFee);
         IMint(address(djed)).mint(msg.sender, _djedAmount);
         require(getRatio() >= rMin, "CONTROLLER: Low Reserves");
+        wbtc.safeTransfer(etaDAO, etaFee);
         emit DjedBough(msg.sender, _djedAmount);
     }
 
@@ -89,9 +95,11 @@ contract Controller is ReentrancyGuard {
         uint price = getPrice();
         uint amountInDollars = (_amountOfShen * shenP) / 1e18;
         uint wbtcAmount = (amountInDollars * 1e18) / price;
-        wbtc.safeTransferFrom(msg.sender, address(this), wbtcAmount);
+        uint etaFee = (daoFee * 1e18) / price;
+        wbtc.safeTransferFrom(msg.sender, address(this), wbtcAmount + etaFee);
         IMint(address(shen)).mint(msg.sender, _amountOfShen);
         require(getRatio() <= rMax, "CONTROLLER: High Reserves");
+        wbtc.transfer(etaDAO, etaFee);
         emit ShenBought(msg.sender, _amountOfShen);
     }
 
@@ -110,6 +118,11 @@ contract Controller is ReentrancyGuard {
         wbtc.safeTransfer(msg.sender, amountToSend);
         require(getRatio() >= rMin, "CONTROLLER: Low Reserves");
         emit ShenSold(msg.sender, _amount);
+    }
+
+    // @notice Only the DAO can call this function
+    function changeEtaFee(uint _newFee) external onlyOwner {
+        daoFee = _newFee;
     }
 
     /** VIEW FUNCTIONS */
